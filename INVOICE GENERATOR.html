@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GST Invoice Generator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] }
+        }
+      }
+    }
+  </script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    input[type=date]::-webkit-calendar-picker-indicator { filter: invert(1); }
+    @media print {
+      .no-print { display: none !important; }
+      #invoice-preview { box-shadow: none !important; }
+    }
+    .item-row { animation: fadeIn 0.2s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+    select option { background: #18181b; color: white; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #18181b; }
+    ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
+  </style>
+</head>
+<body class="dark bg-zinc-950 text-white min-h-screen antialiased">
+
+<!-- ===== TOP NAV ===== -->
+<header class="no-print border-b border-zinc-800 bg-zinc-950/90 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-screen-2xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-7 h-7 bg-blue-600 rounded-md flex items-center justify-center">
+        <span class="text-white text-xs font-bold">G</span>
+      </div>
+      <span class="font-semibold text-white text-sm">GST Invoice Generator</span>
+    </div>
+    <div class="flex gap-2">
+      <button onclick="printInvoice()" class="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        Print
+      </button>
+      <button onclick="downloadPDF()" class="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download PDF
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ===== MAIN LAYOUT ===== -->
+<main class="max-w-screen-2xl mx-auto px-4 md:px-6 py-8 grid grid-cols-1 xl:grid-cols-2 gap-8">
+
+  <!-- LEFT: FORM PANEL -->
+  <div class="space-y-6 no-print">
+
+    <!-- Business Details -->
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+      <h2 class="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-4">Business Details</h2>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-zinc-300 mb-1">Company Name</label>
+          <input id="companyName" oninput="updatePreview()" placeholder="Acme Pvt. Ltd."
+            class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-zinc-300 mb-1">Address</label>
+          <textarea id="businessAddress" oninput="updatePreview()" placeholder="123 Business Street, Mumbai, Maharashtra 400001" rows="3"
+            class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"></textarea>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-zinc-300 mb-1">GSTIN</label>
+          <input id="gstin" oninput="updatePreview()" placeholder="22AAAAA0000A1Z5" maxlength="15"
+            class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Customer Details -->
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+      <h2 class="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-4">Customer Details</h2>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-zinc-300 mb-1">Customer Name</label>
+          <input id="customerName" oninput="updatePreview()" placeholder="John Doe / XYZ Corp"
+            class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-zinc-300 mb-1">Address</label>
+          <textarea id="customerAddress" oninput="updatePreview()" placeholder="456 Customer Lane, Delhi 110001" rows="3"
+            class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Invoice Details -->
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+      <h2 class="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-4">Invoice Details</h2>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-zinc-300 mb-1">Invoice Number</label>
+          <input id="invoiceNumber" oninput="updatePreview()" placeholder="INV-2024-001" value="INV-2024-001"
+            class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-zinc-300 mb-1">Invoice Date</label>
+          <input type="date" id="invoiceDate" oninput="updatePreview()"
+            class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Items Table -->
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Line Items</h2>
+        <button onclick="addItem()" class="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add Item
+        </button>
+      </div>
+      <div id="itemsContainer" class="space-y-3"></div>
+    </div>
+
+    <!-- Summary -->
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+      <h2 class="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-4">Summary</h2>
+      <div class="space-y-3">
+        <div class="flex justify-between text-sm">
+          <span class="text-zinc-400">Subtotal</span>
+          <span id="summarySubtotal" class="text-white font-medium">&#8377;0.00</span>
+        </div>
+        <div class="flex justify-between text-sm">
+          <span class="text-zinc-400">Total GST</span>
+          <span id="summaryGST" class="text-white font-medium">&#8377;0.00</span>
+        </div>
+        <div class="border-t border-zinc-700 pt-3 flex justify-between">
+          <span class="text-white font-semibold">Grand Total</span>
+          <span id="summaryTotal" class="text-blue-400 font-bold text-lg">&#8377;0.00</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <!-- END LEFT PANEL -->
+
+  <!-- RIGHT: LIVE PREVIEW -->
+  <div class="xl:sticky xl:top-24 xl:self-start">
+    <p class="no-print text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Live Preview</p>
+    <div class="no-print overflow-auto rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+      <div id="invoice-preview" class="bg-white text-gray-900 w-full max-w-[794px] mx-auto shadow-2xl" style="min-height:1123px;font-family:'Inter',sans-serif;">
+
+        <!-- Invoice Header -->
+        <div class="bg-gray-900 text-white px-10 py-8">
+          <div class="flex justify-between items-start">
+            <div>
+              <h1 id="prev-company" class="text-2xl font-bold tracking-tight text-white">Your Company</h1>
+              <p id="prev-biz-address" class="text-gray-400 text-sm mt-1 whitespace-pre-line">Company Address</p>
+              <p id="prev-gstin" class="text-gray-400 text-xs mt-2 font-mono">GSTIN: —</p>
+            </div>
+            <div class="text-right">
+              <p class="text-3xl font-light text-gray-300">INVOICE</p>
+              <p id="prev-inv-number" class="text-blue-400 font-mono text-sm mt-1">#INV-2024-001</p>
+              <p id="prev-inv-date" class="text-gray-400 text-sm mt-1">Date</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bill To -->
+        <div class="px-10 py-6 border-b border-gray-200">
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Bill To</p>
+          <p id="prev-customer-name" class="font-semibold text-gray-900">Customer Name</p>
+          <p id="prev-customer-address" class="text-gray-500 text-sm whitespace-pre-line">Customer Address</p>
+        </div>
+
+        <!-- Items Table -->
+        <div class="px-10 py-6">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b-2 border-gray-200">
+                <th class="text-left py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Description</th>
+                <th class="text-right py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Qty</th>
+                <th class="text-right py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Price</th>
+                <th class="text-right py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">GST</th>
+                <th class="text-right py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Total</th>
+              </tr>
+            </thead>
+            <tbody id="prev-items-body">
+              <tr><td colspan="5" class="py-8 text-center text-gray-400">No items added yet</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Totals -->
+        <div class="px-10 pb-10">
+          <div class="ml-auto w-64 space-y-2">
+            <div class="flex justify-between text-sm text-gray-600">
+              <span>Subtotal</span>
+              <span id="prev-subtotal">&#8377;0.00</span>
+            </div>
+            <div class="flex justify-between text-sm text-gray-600">
+              <span>GST</span>
+              <span id="prev-gst">&#8377;0.00</span>
+            </div>
+            <div class="border-t-2 border-gray-900 pt-2 flex justify-between font-bold text-gray-900">
+              <span>Grand Total</span>
+              <span id="prev-total" class="text-blue-600">&#8377;0.00</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-10 py-6 bg-gray-50 border-t border-gray-200">
+          <p class="text-xs text-gray-400 text-center">This is a computer-generated invoice. No signature required.</p>
+        </div>
+
+      </div>
+    </div>
+  </div>
+  <!-- END RIGHT PANEL -->
+
+</main>
+
+<script>
+  // ─── State ───────────────────────────────────────────────────────────────
+  let items = [];
+  let itemCounter = 0;
+
+  // ─── Helpers ─────────────────────────────────────────────────────────────
+
+  /** Formats a number as Indian Rupee currency string */
+  function formatINR(amount) {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency', currency: 'INR', minimumFractionDigits: 2
+    }).format(amount || 0);
+  }
+
+  /** Returns today's date in YYYY-MM-DD format */
+  function todayISO() {
+    return new Date().toISOString().split('T')[0];
+  }
+
+  /** Formats a YYYY-MM-DD string to a readable date like "20 June 2024" */
+  function formatDate(dateStr) {
+    if (!dateStr) return 'Date';
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+  }
+
+  /** Reads current item values from DOM inputs for a given item id */
+  function getItemValues(id) {
+    const desc = document.getElementById('desc-' + id)?.value || '';
+    const qty  = parseFloat(document.getElementById('qty-' + id)?.value) || 0;
+    const price = parseFloat(document.getElementById('price-' + id)?.value) || 0;
+    const gst  = parseFloat(document.getElementById('gst-' + id)?.value) || 0;
+    const base = qty * price;
+    const gstAmt = (base * gst) / 100;
+    return { desc, qty, price, gst, base, gstAmt, total: base + gstAmt };
+  }
+
+  /** Calculates totals across all items */
+  function calcTotals() {
+    let subtotal = 0, totalGST = 0;
+    items.forEach(id => {
+      const v = getItemValues(id);
+      subtotal += v.base;
+      totalGST += v.gstAmt;
+    });
+    return { subtotal, totalGST, grandTotal: subtotal + totalGST };
+  }
+
+  // ─── Items Management ────────────────────────────────────────────────────
+
+  /** Adds a new blank item row to the form */
+  function addItem() {
+    const id = ++itemCounter;
+    items.push(id);
+
+    const container = document.getElementById('itemsContainer');
+    const row = document.createElement('div');
+    row.id = 'item-row-' + id;
+    row.className = 'item-row grid grid-cols-12 gap-2 items-start bg-zinc-800/50 rounded-lg p-3';
+    row.innerHTML = `
+      <div class="col-span-12 sm:col-span-4">
+        <label class="block text-xs text-zinc-500 mb-1">Description</label>
+        <input id="desc-${id}" oninput="updatePreview()" placeholder="Service / Product"
+          class="w-full bg-zinc-800 border border-zinc-700 rounded-md px-2 py-1.5 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+      </div>
+      <div class="col-span-4 sm:col-span-2">
+        <label class="block text-xs text-zinc-500 mb-1">Qty</label>
+        <input id="qty-${id}" type="number" min="1" value="1" oninput="updatePreview()"
+          class="w-full bg-zinc-800 border border-zinc-700 rounded-md px-2 py-1.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+      </div>
+      <div class="col-span-4 sm:col-span-2">
+        <label class="block text-xs text-zinc-500 mb-1">Price (&#8377;)</label>
+        <input id="price-${id}" type="number" min="0" step="0.01" value="0" oninput="updatePreview()"
+          class="w-full bg-zinc-800 border border-zinc-700 rounded-md px-2 py-1.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+      </div>
+      <div class="col-span-4 sm:col-span-2">
+        <label class="block text-xs text-zinc-500 mb-1">GST %</label>
+        <select id="gst-${id}" onchange="updatePreview()"
+          class="w-full bg-zinc-800 border border-zinc-700 rounded-md px-2 py-1.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+          <option value="5">5%</option>
+          <option value="12">12%</option>
+          <option value="18" selected>18%</option>
+          <option value="28">28%</option>
+        </select>
+      </div>
+      <div class="col-span-12 sm:col-span-2 flex items-end justify-between sm:flex-col sm:items-end gap-1">
+        <div>
+          <label class="block text-xs text-zinc-500 mb-1">Total</label>
+          <p id="line-total-${id}" class="text-sm font-semibold text-white">&#8377;0.00</p>
+        </div>
+        <button type="button" onclick="removeItem(${id})" class="text-zinc-500 hover:text-red-400 transition-colors p-1" title="Remove item">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        </button>
+      </div>
+    `;
+    container.appendChild(row);
+    updatePreview();
+  }
+
+  /** Removes an item row by id */
+  function removeItem(id) {
+    if (items.length <= 1) return; // keep at least one item
+    items = items.filter(i => i !== id);
+    document.getElementById('item-row-' + id)?.remove();
+    updatePreview();
+  }
+
+  // ─── Live Preview Update ─────────────────────────────────────────────────
+
+  /**
+   * Reads all form values and updates the invoice preview DOM in real time.
+   * Also updates the summary panel and each line item total.
+   */
+  function updatePreview() {
+    // Business
+    const company = document.getElementById('companyName').value || 'Your Company';
+    const bizAddr = document.getElementById('businessAddress').value || 'Company Address';
+    const gstin   = document.getElementById('gstin').value || '\u2014';
+
+    // Customer
+    const custName = document.getElementById('customerName').value || 'Customer Name';
+    const custAddr = document.getElementById('customerAddress').value || 'Customer Address';
+
+    // Invoice
+    const invNum  = document.getElementById('invoiceNumber').value || 'INV-001';
+    const invDate = document.getElementById('invoiceDate').value;
+
+    // Update preview header
+    document.getElementById('prev-company').textContent = company;
+    document.getElementById('prev-biz-address').textContent = bizAddr;
+    document.getElementById('prev-gstin').textContent = 'GSTIN: ' + gstin;
+    document.getElementById('prev-inv-number').textContent = '#' + invNum;
+    document.getElementById('prev-inv-date').textContent = formatDate(invDate);
+    document.getElementById('prev-customer-name').textContent = custName;
+    document.getElementById('prev-customer-address').textContent = custAddr;
+
+    // Build items table rows
+    const tbody = document.getElementById('prev-items-body');
+    if (items.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="py-8 text-center text-gray-400">No items added yet</td></tr>';
+    } else {
+      tbody.innerHTML = items.map(id => {
+        const v = getItemValues(id);
+        // Update line total in form panel
+        const lineTotalEl = document.getElementById('line-total-' + id);
+        if (lineTotalEl) lineTotalEl.textContent = formatINR(v.total);
+        return `
+          <tr class="border-b border-gray-100">
+            <td class="py-3 text-gray-800">${v.desc || '\u2014'}</td>
+            <td class="py-3 text-right text-gray-600">${v.qty}</td>
+            <td class="py-3 text-right text-gray-600">${formatINR(v.price)}</td>
+            <td class="py-3 text-right text-gray-600">${v.gst}% (${formatINR(v.gstAmt)})</td>
+            <td class="py-3 text-right font-medium text-gray-900">${formatINR(v.total)}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // Totals
+    const { subtotal, totalGST, grandTotal } = calcTotals();
+    document.getElementById('prev-subtotal').textContent = formatINR(subtotal);
+    document.getElementById('prev-gst').textContent = formatINR(totalGST);
+    document.getElementById('prev-total').textContent = formatINR(grandTotal);
+    document.getElementById('summarySubtotal').textContent = formatINR(subtotal);
+    document.getElementById('summaryGST').textContent = formatINR(totalGST);
+    document.getElementById('summaryTotal').textContent = formatINR(grandTotal);
+  }
+
+  // ─── PDF Export ──────────────────────────────────────────────────────────
+
+  /**
+   * Captures the invoice preview element using html2canvas,
+   * then embeds it into a jsPDF A4 document and triggers download.
+   */
+  async function downloadPDF() {
+    const el = document.getElementById('invoice-preview');
+    const btn = event.currentTarget;
+    btn.textContent = 'Generating...';
+    btn.disabled = true;
+
+    try {
+      const canvas = await html2canvas(el, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false
+      });
+
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pdfWidth, pdfHeight);
+      const invNum = document.getElementById('invoiceNumber').value || 'invoice';
+      pdf.save('Invoice-' + invNum + '.pdf');
+    } catch (e) {
+      alert('PDF generation failed. Please try Print instead.');
+    } finally {
+      btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download PDF`;
+      btn.disabled = false;
+    }
+  }
+
+  /** Triggers the browser print dialog for the invoice preview */
+  function printInvoice() {
+    window.print();
+  }
+
+  // ─── Init ────────────────────────────────────────────────────────────────
+
+  /** Initialise the page with today's date and one blank item */
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('invoiceDate').value = todayISO();
+    addItem();
+  });
+</script>
+
+</body>
+</html>
